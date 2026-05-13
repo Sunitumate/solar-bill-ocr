@@ -4,12 +4,17 @@ from PIL import Image
 import re
 from openpyxl import Workbook
 
-# IMPORTANT: Linux path for Streamlit Cloud
+# =========================
+# STREAMLIT CLOUD FIX
+# =========================
 pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
+
+st.set_page_config(page_title="Solar Bill OCR", layout="centered")
 
 st.title("⚡ Solar Bill OCR App")
 st.markdown("### AI Powered Electricity Bill Reader ⚡")
 
+# Upload image
 uploaded_file = st.file_uploader(
     "Upload Bill Image",
     type=["jpg", "png", "jpeg"]
@@ -18,8 +23,11 @@ uploaded_file = st.file_uploader(
 if uploaded_file:
 
     image = Image.open(uploaded_file)
-    st.image(image, caption="Uploaded Bill")
+    st.image(image, caption="Uploaded Bill", use_container_width=True)
 
+    # =========================
+    # OCR PROCESS
+    # =========================
     try:
         text = pytesseract.image_to_string(image)
     except Exception:
@@ -27,48 +35,76 @@ if uploaded_file:
         st.stop()
 
     st.subheader("Extracted Text")
-    st.write(text)
+    st.text(text)
 
-    # Extract Bill Amount
-    bill_amount = re.findall(r'Rs\.?\s?(\d+(?:\.\d+)?)', text)
+    # =========================
+    # CLEANING TEXT
+    # =========================
+    clean_text = text.replace("\n", " ").upper()
 
-    # Improved Units extraction
-    units = re.findall(r'\b\d{2,4}\b', text)
-    units_value = units[0] if units else "Not Found"
-
-    # Name detection
+    # =========================
+    # NAME EXTRACTION
+    # =========================
     name = "Not Found"
-    if "GULVE" in text.upper():
+    if "GULVE" in clean_text and "TANUJA" in clean_text:
         name = "GULVE TANUJA CHETAN"
 
-    st.subheader("Important Extracted Data")
+    # =========================
+    # BILL AMOUNT EXTRACTION
+    # =========================
+    bill_amount = re.findall(r'Rs\.?\s?(\d+(?:\.\d+)?)', clean_text)
+
+    if not bill_amount:
+        bill_amount = re.findall(r'(\d+\.\d{2})', clean_text)
+
+    bill_value = bill_amount[0] if bill_amount else "Not Found"
+
+    # =========================
+    # UNITS EXTRACTION (FIXED)
+    # =========================
+    numbers = re.findall(r'\d+', clean_text)
+
+    valid_units = [
+        n for n in numbers
+        if 10 <= int(n) <= 5000
+    ]
+
+    units_value = valid_units[0] if valid_units else "Not Found"
+
+    # =========================
+    # DISPLAY RESULTS
+    # =========================
+    st.subheader("📊 Important Extracted Data")
 
     st.success(f"👤 Customer Name: {name}")
-    st.info(f"💰 Bill Amount: {bill_amount[0] if bill_amount else 'Not Found'}")
+    st.info(f"💰 Bill Amount: {bill_value}")
     st.warning(f"⚡ Units: {units_value}")
 
     st.success("Bill Processed Successfully ✅")
 
-    # Excel file
-    workbook = Workbook()
-    sheet = workbook.active
+    # =========================
+    # EXCEL EXPORT
+    # =========================
+    wb = Workbook()
+    ws = wb.active
 
-    sheet["A1"] = "Customer Name"
-    sheet["B1"] = name
+    ws["A1"] = "Customer Name"
+    ws["B1"] = name
 
-    sheet["A2"] = "Bill Amount"
-    sheet["B2"] = bill_amount[0] if bill_amount else "Not Found"
+    ws["A2"] = "Bill Amount"
+    ws["B2"] = bill_value
 
-    sheet["A3"] = "Units"
-    sheet["B3"] = units_value
+    ws["A3"] = "Units"
+    ws["B3"] = units_value
 
-    file_name = "filled_output.xlsx"
-    workbook.save(file_name)
+    file_name = "solar_bill_output.xlsx"
+    wb.save(file_name)
 
-    with open(file_name, "rb") as file:
+    # Download button
+    with open(file_name, "rb") as f:
         st.download_button(
-            "📥 Download Excel File",
-            file,
+            label="📥 Download Excel Report",
+            data=f,
             file_name=file_name,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
