@@ -12,7 +12,7 @@ pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
 # =====================================
 # PAGE SETTINGS
 # =====================================
-st.set_page_config(page_title="Solar Bill OCR")
+st.set_page_config(page_title="Solar Bill OCR App")
 
 st.title("⚡ Solar Bill OCR App")
 st.markdown("### AI Powered Electricity Bill Reader 🇮🇳")
@@ -33,7 +33,7 @@ if uploaded_file:
     # Open Image
     image = Image.open(uploaded_file)
 
-    # Show Image
+    # Show Uploaded Image
     st.image(
         image,
         caption="Uploaded Bill",
@@ -41,7 +41,7 @@ if uploaded_file:
     )
 
     # =====================================
-    # OCR TEXT EXTRACTION
+    # OCR EXTRACTION
     # =====================================
     try:
 
@@ -60,7 +60,7 @@ if uploaded_file:
     st.text(text)
 
     # =====================================
-    # CLEAN OCR TEXT
+    # CLEAN TEXT
     # =====================================
     clean_text = text.upper()
 
@@ -69,39 +69,53 @@ if uploaded_file:
     # =====================================
     customer_name = "Not Found"
 
-    name_patterns = [
+    lines = clean_text.split("\n")
 
-        r'CUSTOMER NAME[:\-]?\s*([A-Z ]+)',
+    for line in lines:
 
-        r'CONSUMER NAME[:\-]?\s*([A-Z ]+)',
+        line = line.strip()
 
-        r'NAME[:\-]?\s*([A-Z ]+)'
-    ]
+        # Skip short lines
+        if len(line) < 6:
+            continue
 
-    for pattern in name_patterns:
+        # Remove unwanted words
+        invalid_words = [
 
-        match = re.search(pattern, clean_text)
+            "BILL",
+            "SUPPLY",
+            "MONTH",
+            "AMOUNT",
+            "TOTAL",
+            "MSEDCL",
+            "MAHAVITARAN",
+            "TAX",
+            "CONSUMER",
+            "ELECTRICITY",
+            "PAYMENT",
+            "ACCOUNT",
+            "NUMBER",
+            "ENERGY",
+            "POWER",
+            "LIMITED",
+            "DOWNLOAD",
+            "ONLINE"
 
-        if match:
+        ]
 
-            extracted_name = match.group(1).strip()
+        if any(word in line for word in invalid_words):
+            continue
 
-            if len(extracted_name) > 5:
+        # Detect proper names
+        if re.fullmatch(r'[A-Z ]{6,}', line):
 
-                customer_name = extracted_name
+            words = line.split()
+
+            # Name should have 2 to 4 words
+            if 2 <= len(words) <= 4:
+
+                customer_name = line
                 break
-
-    # Fallback Name
-    if customer_name == "Not Found":
-
-        possible_names = re.findall(
-            r'[A-Z]{3,}\s[A-Z]{3,}\s?[A-Z]*',
-            clean_text
-        )
-
-        if possible_names:
-
-            customer_name = possible_names[0]
 
     # =====================================
     # BILL AMOUNT
@@ -138,7 +152,9 @@ if uploaded_file:
 
         r'CONSUMPTION[:\-]?\s*(\d+)',
 
-        r'KWH[:\-]?\s*(\d+)'
+        r'KWH[:\-]?\s*(\d+)',
+
+        r'CURRENT READING[:\-]?\s*(\d+)'
     ]
 
     for pattern in unit_patterns:
@@ -149,7 +165,7 @@ if uploaded_file:
 
             value = int(match.group(1))
 
-            if 1 <= value <= 10000:
+            if 1 <= value <= 100000:
 
                 units = str(value)
                 break
@@ -163,7 +179,9 @@ if uploaded_file:
 
         r'BILL NO[:\-]?\s*(\d+)',
 
-        r'ACCOUNT NO[:\-]?\s*(\d+)'
+        r'ACCOUNT NO[:\-]?\s*(\d+)',
+
+        r'CONSUMER NO[:\-]?\s*(\d+)'
     ]
 
     for pattern in bill_patterns:
@@ -176,7 +194,7 @@ if uploaded_file:
             break
 
     # =====================================
-    # SHOW FINAL OUTPUT
+    # FINAL OUTPUT
     # =====================================
     st.subheader("📊 Important Extracted Data")
 
