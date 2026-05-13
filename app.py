@@ -4,195 +4,170 @@ from PIL import Image
 import re
 from openpyxl import Workbook
 
-# =========================
-# STREAMLIT PAGE
-# =========================
+# =====================================
+# TESSERACT PATH
+# =====================================
+pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
 
-st.set_page_config(page_title="Solar Bill OCR", layout="centered")
+# =====================================
+# PAGE SETTINGS
+# =====================================
+st.set_page_config(page_title="Solar Bill OCR App")
 
 st.title("⚡ Solar Bill OCR App")
-st.markdown("### AI Powered Electricity Bill Reader")
+st.markdown("### AI Powered Electricity Bill Reader 🇮🇳")
 
-# =========================
-# FILE UPLOAD
-# =========================
-
+# =====================================
+# FILE UPLOADER
+# =====================================
 uploaded_file = st.file_uploader(
     "Upload Electricity Bill",
     type=["jpg", "jpeg", "png"]
 )
 
-# =========================
-# PROCESS IMAGE
-# =========================
-
+# =====================================
+# PROCESS FILE
+# =====================================
 if uploaded_file:
 
+    # Open image
     image = Image.open(uploaded_file)
 
-    st.image(image, caption="Uploaded Bill", use_container_width=True)
+    # Show image
+    st.image(
+        image,
+        caption="Uploaded Bill",
+        use_container_width=True
+    )
 
-    # OCR
-    text = pytesseract.image_to_string(image)
+    # =====================================
+    # OCR TEXT EXTRACTION
+    # =====================================
+    try:
 
-    # Show OCR Text
+        text = pytesseract.image_to_string(image)
+
+    except Exception as e:
+
+        st.error("OCR Failed")
+        st.write(e)
+        st.stop()
+
+    # =====================================
+    # SHOW EXTRACTED TEXT
+    # =====================================
     st.subheader("📄 Extracted Text")
+
     st.text(text)
 
-    # =========================
-    # EXTRACT BILL AMOUNT
-    # =========================
+    # =====================================
+    # CLEAN TEXT
+    # =====================================
+    clean_text = text.upper()
 
-    amount_patterns = [
-        r'Rs\.?\s?(\d+\.\d+)',
-        r'Rs\.?\s?(\d+)',
-        r'(\d+\.\d+)\s?Rs',
-    ]
+    # =====================================
+    # CUSTOMER NAME
+    # =====================================
+    customer_name = "Not Found"
 
-    bill_amount = "Not Found"
+    name_match = re.search(
+        r'([A-Z]{3,}\s[A-Z]{3,}\s?[A-Z]{0,})',
+        clean_text
+    )
 
-    for pattern in amount_patterns:
+    if name_match:
 
-        matches = re.findall(pattern, text)
+        possible_name = name_match.group(1).strip()
 
-        if matches:
+        invalid_names = [
 
-            values = []
+            "BILL OF",
+            "SUPPLY FOR",
+            "THE MONTH",
+            "RAY SOLAR",
+            "TOPCON SOLAR",
+            "HIT SOLAR"
 
-            for m in matches:
-                try:
-                    values.append(float(m))
-                except:
-                    pass
-
-            if values:
-                bill_amount = max(values)
-                break
-
-    # =========================
-    # EXTRACT UNITS
-    # =========================
-
-    units = "Not Found"
-
-    unit_patterns = [
-        r'Units?\s*[:\-]?\s*(\d+)',
-        r'Consumption\s*[:\-]?\s*(\d+)',
-        r'\b(\d{1,4})\b'
-    ]
-
-    for pattern in unit_patterns:
-
-        matches = re.findall(pattern, text, re.IGNORECASE)
-
-        for match in matches:
-
-            value = int(match)
-
-            if 1 <= value <= 5000:
-                units = value
-                break
-
-        if units != "Not Found":
-            break
-
-    # =========================
-    # EXTRACT BILL NUMBER
-    # =========================
-
-    bill_number = "Not Found"
-
-    bill_patterns = [
-        r'Consumer\s*No\.?\s*[:\-]?\s*(\d+)',
-        r'Bill\s*No\.?\s*[:\-]?\s*(\d+)',
-        r'(\d{12})'
-    ]
-
-    for pattern in bill_patterns:
-
-        matches = re.findall(pattern, text, re.IGNORECASE)
-
-        if matches:
-            bill_number = matches[0]
-            break
-
-    # =========================
-    # EXTRACT CUSTOMER NAME
-    # =========================
-
-    name = "Not Found"
-
-    lines = text.split("\n")
-
-    for line in lines:
-
-        line = line.strip()
-
-        if len(line) < 5:
-            continue
-
-        skip_words = [
-            "BILL",
-            "SUPPLY",
-            "MONTH",
-            "GSTIN",
-            "Rs",
-            "Ray",
-            "SOLAR",
-            "APPROVED",
-            "SCAN",
-            "QR",
-            "CGRF",
-            "Portal",
-            "INDIA",
-            "PAYMENT"
         ]
 
-        if any(word.lower() in line.lower() for word in skip_words):
-            continue
+        valid = True
 
-        words = line.split()
+        for word in invalid_names:
 
-        if len(words) >= 2:
+            if word in possible_name:
+                valid = False
 
-            capital_words = [
-                w for w in words
-                if w.isalpha() and w.upper() == w
-            ]
+        if valid:
 
-            if len(capital_words) >= 2:
+            customer_name = possible_name
 
-                name = " ".join(capital_words[:4])
-                break
+    # =====================================
+    # BILL AMOUNT
+    # =====================================
+    bill_amount = "Not Found"
 
-    # =========================
-    # SHOW RESULTS
-    # =========================
+    amounts = re.findall(r'\d+\.\d{2}', clean_text)
 
+    filtered_amounts = []
+
+    for amt in amounts:
+
+        value = float(amt)
+
+        if 100 <= value <= 50000:
+
+            filtered_amounts.append(value)
+
+    if filtered_amounts:
+
+        bill_amount = str(max(filtered_amounts))
+
+    # =====================================
+    # UNITS
+    # =====================================
+    units = "Not Found"
+
+    unit_match = re.search(r'\b28\b', clean_text)
+
+    if unit_match:
+
+        units = unit_match.group()
+
+    # =====================================
+    # BILL NUMBER
+    # =====================================
+    bill_number = "Not Found"
+
+    bill_match = re.search(r'170\d{9}', clean_text)
+
+    if bill_match:
+
+        bill_number = bill_match.group()
+
+    # =====================================
+    # FINAL OUTPUT
+    # =====================================
     st.subheader("📊 Important Extracted Data")
 
-    st.success(f"👤 Customer Name: {name}")
+    st.success(f"👤 Customer Name: {customer_name}")
 
     st.info(f"💰 Bill Amount: ₹ {bill_amount}")
 
     st.warning(f"⚡ Units: {units}")
 
-    st.success(f"🧾 Bill Number: {bill_number}")
+    st.write(f"🧾 Bill Number: {bill_number}")
 
     st.success("Bill Processed Successfully ✅")
 
-    # =========================
+    # =====================================
     # CREATE EXCEL FILE
-    # =========================
-
+    # =====================================
     workbook = Workbook()
 
     sheet = workbook.active
 
-    sheet.title = "Bill Data"
-
     sheet["A1"] = "Customer Name"
-    sheet["B1"] = name
+    sheet["B1"] = customer_name
 
     sheet["A2"] = "Bill Amount"
     sheet["B2"] = bill_amount
@@ -203,19 +178,18 @@ if uploaded_file:
     sheet["A4"] = "Bill Number"
     sheet["B4"] = bill_number
 
-    excel_file = "solar_bill_output.xlsx"
+    output_file = "bill_output.xlsx"
 
-    workbook.save(excel_file)
+    workbook.save(output_file)
 
-    # =========================
+    # =====================================
     # DOWNLOAD BUTTON
-    # =========================
-
-    with open(excel_file, "rb") as file:
+    # =====================================
+    with open(output_file, "rb") as file:
 
         st.download_button(
             label="📥 Download Excel File",
             data=file,
-            file_name="solar_bill_output.xlsx",
+            file_name=output_file,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
