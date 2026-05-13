@@ -33,7 +33,7 @@ if uploaded_file:
     # Open Image
     image = Image.open(uploaded_file)
 
-    # Show Uploaded Image
+    # Show Image
     st.image(
         image,
         caption="Uploaded Bill",
@@ -41,7 +41,7 @@ if uploaded_file:
     )
 
     # =====================================
-    # OCR EXTRACTION
+    # OCR TEXT EXTRACTION
     # =====================================
     try:
 
@@ -71,51 +71,77 @@ if uploaded_file:
 
     lines = clean_text.split("\n")
 
+    invalid_words = [
+
+        "BILL",
+        "SUPPLY",
+        "MONTH",
+        "AMOUNT",
+        "TOTAL",
+        "MSEDCL",
+        "MAHAVITARAN",
+        "TAX",
+        "CONSUMER",
+        "ELECTRICITY",
+        "PAYMENT",
+        "ACCOUNT",
+        "NUMBER",
+        "ENERGY",
+        "POWER",
+        "LIMITED",
+        "DOWNLOAD",
+        "ONLINE",
+        "GST",
+        "INDIA",
+        "SOLAR",
+        "PANELS",
+        "FOR",
+        "THE"
+
+    ]
+
+    best_name = ""
+
     for line in lines:
 
         line = line.strip()
 
+        # Remove symbols/numbers
+        line = re.sub(r'[^A-Z ]', '', line)
+
+        # Remove extra spaces
+        line = " ".join(line.split())
+
         # Skip short lines
-        if len(line) < 6:
+        if len(line) < 8:
             continue
 
-        # Remove unwanted words
-        invalid_words = [
-
-            "BILL",
-            "SUPPLY",
-            "MONTH",
-            "AMOUNT",
-            "TOTAL",
-            "MSEDCL",
-            "MAHAVITARAN",
-            "TAX",
-            "CONSUMER",
-            "ELECTRICITY",
-            "PAYMENT",
-            "ACCOUNT",
-            "NUMBER",
-            "ENERGY",
-            "POWER",
-            "LIMITED",
-            "DOWNLOAD",
-            "ONLINE"
-
-        ]
-
+        # Skip invalid words
         if any(word in line for word in invalid_words):
             continue
 
-        # Detect proper names
-        if re.fullmatch(r'[A-Z ]{6,}', line):
+        # Detect proper uppercase names
+        if re.fullmatch(r'[A-Z ]+', line):
 
             words = line.split()
 
-            # Name should have 2 to 4 words
+            # Name should have 2-4 words
             if 2 <= len(words) <= 4:
 
-                customer_name = line
-                break
+                valid = True
+
+                for w in words:
+
+                    if len(w) < 3:
+                        valid = False
+
+                if valid:
+
+                    best_name = line
+                    break
+
+    if best_name:
+        customer_name = best_name
 
     # =====================================
     # BILL AMOUNT
