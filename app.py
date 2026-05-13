@@ -40,7 +40,7 @@ if uploaded_file:
     # Open Image
     image = Image.open(uploaded_file)
 
-    # Show Image
+    # Show Uploaded Image
     st.image(
         image,
         caption="Uploaded Bill",
@@ -62,20 +62,13 @@ if uploaded_file:
         st.stop()
 
     # ======================================
-    # SHOW EXTRACTED TEXT
-    # ======================================
-
-    st.subheader("📄 Extracted Text")
-    st.text(text)
-
-    # ======================================
-    # CLEAN OCR TEXT
+    # CLEAN TEXT
     # ======================================
 
     clean_text = text.upper()
 
     # ======================================
-    # CUSTOMER NAME EXTRACTION
+    # CUSTOMER NAME
     # ======================================
 
     customer_name = "Not Found"
@@ -102,7 +95,9 @@ if uploaded_file:
         "CGRF",
         "SCAN",
         "QR CODE",
-        "RAY SOLAR"
+        "RAY SOLAR",
+        "SUB DN",
+        "DIVISION"
 
     ]
 
@@ -117,19 +112,24 @@ if uploaded_file:
             for skip in skip_words:
 
                 if skip in match:
+
                     valid = False
                     break
 
             if valid:
 
-                customer_name = match.strip()
-                break
+                words = match.split()
+
+                if len(words) >= 2:
+
+                    customer_name = match.strip()
+                    break
 
         if customer_name != "Not Found":
             break
 
     # ======================================
-    # BILL AMOUNT EXTRACTION
+    # BILL AMOUNT
     # ======================================
 
     bill_amount = "Not Found"
@@ -148,6 +148,7 @@ if uploaded_file:
             value = float(amt)
 
             if 50 <= value <= 50000:
+
                 valid_amounts.append(value)
 
         except:
@@ -158,7 +159,7 @@ if uploaded_file:
         bill_amount = min(valid_amounts)
 
     # ======================================
-    # UNITS EXTRACTION
+    # UNITS
     # ======================================
 
     units = "Not Found"
@@ -167,7 +168,9 @@ if uploaded_file:
 
         r'UNITS?\s*[:\-]?\s*(\d+)',
 
-        r'CONSUMPTION\s*[:\-]?\s*(\d+)'
+        r'CONSUMPTION\s*[:\-]?\s*(\d+)',
+
+        r'\b(\d{1,4})\s+UNITS\b'
     ]
 
     for pattern in unit_patterns:
@@ -180,22 +183,29 @@ if uploaded_file:
             break
 
     # ======================================
-    # BILL NUMBER EXTRACTION
+    # BILL NUMBER
     # ======================================
 
     bill_number = "Not Found"
 
-    bill_match = re.search(
-        r'\b\d{12}\b',
-        clean_text
-    )
+    bill_patterns = [
 
-    if bill_match:
+        r'BILL\s*NO\.?\s*(\d{10,15})',
 
-        bill_number = bill_match.group()
+        r'\b\d{12}\b'
+    ]
+
+    for pattern in bill_patterns:
+
+        match = re.search(pattern, clean_text)
+
+        if match:
+
+            bill_number = match.group(1) if match.lastindex else match.group()
+            break
 
     # ======================================
-    # FINAL OUTPUT
+    # OUTPUT
     # ======================================
 
     st.subheader("📊 Important Extracted Data")
@@ -211,7 +221,7 @@ if uploaded_file:
     st.success("Bill Processed Successfully ✅")
 
     # ======================================
-    # CREATE EXCEL FILE
+    # EXCEL EXPORT
     # ======================================
 
     workbook = Workbook()
