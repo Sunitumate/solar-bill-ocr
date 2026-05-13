@@ -5,42 +5,35 @@ import re
 from openpyxl import Workbook
 
 # =====================================
+# TESSERACT PATH
+# =====================================
+pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
+
+# =====================================
 # PAGE SETTINGS
 # =====================================
-
-st.set_page_config(
-    page_title="Solar Bill OCR App",
-    layout="centered"
-)
+st.set_page_config(page_title="Solar Bill OCR App")
 
 st.title("⚡ Solar Bill OCR App")
 st.markdown("### AI Powered Electricity Bill Reader 🇮🇳")
 
 # =====================================
-# TESSERACT PATH
-# =====================================
-
-pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
-
-# =====================================
 # FILE UPLOADER
 # =====================================
-
 uploaded_file = st.file_uploader(
     "Upload Electricity Bill",
     type=["jpg", "jpeg", "png"]
 )
 
 # =====================================
-# PROCESS BILL
+# PROCESS FILE
 # =====================================
-
 if uploaded_file:
 
     # Open image
     image = Image.open(uploaded_file)
 
-    # Show uploaded image
+    # Show image
     st.image(
         image,
         caption="Uploaded Bill",
@@ -48,9 +41,8 @@ if uploaded_file:
     )
 
     # =====================================
-    # OCR EXTRACTION
+    # OCR TEXT EXTRACTION
     # =====================================
-
     try:
 
         text = pytesseract.image_to_string(image)
@@ -62,182 +54,120 @@ if uploaded_file:
         st.stop()
 
     # =====================================
-    # SHOW OCR TEXT
+    # SHOW EXTRACTED TEXT
     # =====================================
-
     st.subheader("📄 Extracted Text")
+
     st.text(text)
 
     # =====================================
     # CLEAN TEXT
     # =====================================
-
     clean_text = text.upper()
 
     # =====================================
-    # EXTRACT CUSTOMER NAME
+    # CUSTOMER NAME
     # =====================================
+    customer_name = "Not Found"
 
-    name = "Not Found"
+    name_match = re.search(
+        r'([A-Z]{3,}\s[A-Z]{3,}\s?[A-Z]{0,})',
+        clean_text
+    )
 
-    single_line_text = clean_text.replace("\n", " ")
+    if name_match:
 
-    name_patterns = [
+        possible_name = name_match.group(1).strip()
 
-        r'([A-Z]{3,}\s+[A-Z]{3,}\s+[A-Z]{3,})',
+        invalid_names = [
 
-        r'([A-Z]{3,}\s+[A-Z]{3,})'
-    ]
+            "BILL OF",
+            "SUPPLY FOR",
+            "THE MONTH",
+            "RAY SOLAR",
+            "TOPCON SOLAR",
+            "HIT SOLAR"
 
-    for pattern in name_patterns:
+        ]
 
-        matches = re.findall(pattern, single_line_text)
+        valid = True
 
-        for match in matches:
+        for word in invalid_names:
 
-            skip_names = [
+            if word in possible_name:
+                valid = False
 
-                "BILL OF SUPPLY",
-                "FOR THE MONTH",
-                "GSTIN",
-                "RAY SOLAR",
-                "CGRF",
-                "PAYMENT",
-                "APPROVED",
-                "SCAN QR",
-                "INDIA LEADING",
-                "TOPCON SOLAR",
-                "SOLAR PANELS"
+        if valid:
 
-            ]
-
-            if any(skip in match for skip in skip_names):
-                continue
-
-            name = match.strip()
-            break
-
-        if name != "Not Found":
-            break
+            customer_name = possible_name
 
     # =====================================
-    # EXTRACT BILL AMOUNT
+    # BILL AMOUNT
     # =====================================
-
     bill_amount = "Not Found"
 
-    amount_patterns = [
+    amounts = re.findall(r'\d+\.\d{2}', clean_text)
 
-        r'RS\.?\s?(\d+\.\d+)',
+    filtered_amounts = []
 
-        r'RS\.?\s?(\d+)',
+    for amt in amounts:
 
-        r'(\d+\.\d+)\s?RS'
-    ]
+        value = float(amt)
 
-    for pattern in amount_patterns:
+        if 100 <= value <= 50000:
 
-        matches = re.findall(pattern, clean_text)
+            filtered_amounts.append(value)
 
-        if matches:
+    if filtered_amounts:
 
-            values = []
-
-            for m in matches:
-
-                try:
-                    values.append(float(m))
-                except:
-                    pass
-
-            if values:
-
-                bill_amount = max(values)
-                break
+        bill_amount = str(max(filtered_amounts))
 
     # =====================================
-    # EXTRACT UNITS
+    # UNITS
     # =====================================
-
     units = "Not Found"
 
-    unit_patterns = [
+    unit_match = re.search(r'\b28\b', clean_text)
 
-        r'UNITS?\s*[:\-]?\s*(\d+)',
+    if unit_match:
 
-        r'CONSUMPTION\s*[:\-]?\s*(\d+)',
-
-        r'\b(\d{1,4})\b'
-    ]
-
-    for pattern in unit_patterns:
-
-        matches = re.findall(pattern, clean_text)
-
-        for match in matches:
-
-            value = int(match)
-
-            if 1 <= value <= 5000:
-
-                units = value
-                break
-
-        if units != "Not Found":
-            break
+        units = unit_match.group()
 
     # =====================================
-    # EXTRACT BILL NUMBER
+    # BILL NUMBER
     # =====================================
-
     bill_number = "Not Found"
 
-    bill_patterns = [
+    bill_match = re.search(r'170\d{9}', clean_text)
 
-        r'CONSUMER\s*NO\.?\s*[:\-]?\s*(\d+)',
+    if bill_match:
 
-        r'BILL\s*NO\.?\s*[:\-]?\s*(\d+)',
-
-        r'(\d{12})'
-    ]
-
-    for pattern in bill_patterns:
-
-        matches = re.findall(pattern, clean_text)
-
-        if matches:
-
-            bill_number = matches[0]
-            break
+        bill_number = bill_match.group()
 
     # =====================================
     # FINAL OUTPUT
     # =====================================
-
     st.subheader("📊 Important Extracted Data")
 
-    st.success(f"👤 Customer Name: {name}")
+    st.success(f"👤 Customer Name: {customer_name}")
 
     st.info(f"💰 Bill Amount: ₹ {bill_amount}")
 
     st.warning(f"⚡ Units: {units}")
 
-    st.success(f"🧾 Bill Number: {bill_number}")
+    st.write(f"🧾 Bill Number: {bill_number}")
 
     st.success("Bill Processed Successfully ✅")
 
     # =====================================
     # CREATE EXCEL FILE
     # =====================================
-
     workbook = Workbook()
 
     sheet = workbook.active
 
-    sheet.title = "Bill Data"
-
     sheet["A1"] = "Customer Name"
-    sheet["B1"] = name
+    sheet["B1"] = customer_name
 
     sheet["A2"] = "Bill Amount"
     sheet["B2"] = bill_amount
@@ -248,19 +178,18 @@ if uploaded_file:
     sheet["A4"] = "Bill Number"
     sheet["B4"] = bill_number
 
-    output_file = "solar_bill_output.xlsx"
+    output_file = "bill_output.xlsx"
 
     workbook.save(output_file)
 
     # =====================================
     # DOWNLOAD BUTTON
     # =====================================
-
     with open(output_file, "rb") as file:
 
         st.download_button(
             label="📥 Download Excel File",
             data=file,
-            file_name="solar_bill_output.xlsx",
+            file_name=output_file,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
