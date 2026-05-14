@@ -15,30 +15,33 @@ st.title("⚡ Solar Bill OCR App")
 st.markdown("### AI Powered Electricity Bill Reader")
 
 uploaded_file = st.file_uploader("Upload Bill Image", type=["jpg", "png", "jpeg"])
-
 def extract_data(text):
-    # 1. Improved Amount Logic: 
-    # Looks for numbers after 'Total', 'Net', or 'Payable' even without 'Rs'
-    amt_match = re.search(r'(?:Total|Net|Payable|Amount|Rs|₹)[\s\.:]*([\d,]+\.\d{2})', text, re.IGNORECASE)
+    # 1. UNIVERSAL AMOUNT LOGIC
+    # Searches for common currency symbols and decimal formats
+    amt_match = re.search(r'(?:Total|Net|Payable|Amount|Rs|₹|Bill)[\s\.:]*([\d,]+\.\d{2})', text, re.IGNORECASE)
     bill_amt = amt_match.group(1).replace(',', '') if amt_match else "Not Found"
 
-    # 2. Improved Units Logic:
-    # Specifically looks for the word 'Units' or 'KWh' followed by a number
-    unit_match = re.search(r'(?:Units|Consumed|KWh|Usage)[\s\.:]*(\d+)', text, re.IGNORECASE)
+    # 2. UNIVERSAL UNITS LOGIC
+    # Covers KWH, Units, and Consumed energy
+    unit_match = re.search(r'(?:Units|Consumed|KWh|Usage|Total|Reading)[\s\.:]*(\d+)', text, re.IGNORECASE)
     units = unit_match.group(1) if unit_match else "Not Found"
 
-    # 3. Improved Name Logic:
-    # Skips lines that look like phone numbers (digits only) or contain common bill keywords
+    # 3. UNIVERSAL NAME LOGIC (The hardest part for public apps)
     lines = text.split('\n')
     name = "Not Found"
+    
+    # We filter out lines that are likely dates, phone numbers, or addresses
     for line in lines:
         clean = line.strip()
-        # Ensure line has letters, is long enough, and isn't just a phone number
-        if len(clean) > 8 and any(c.isalpha() for c in clean):
-            bad_words = ['bill', 'date', 'tax', 'no', 'tel', 'phone', 'account', 'consumer']
-            if not any(word in clean.lower() for word in bad_words):
-                name = clean
-                break
+        # A name must have letters, no numbers like '2026', and be long enough
+        if len(clean) > 10 and any(c.isalpha() for c in clean):
+            # Exclude lines that are clearly NOT names
+            exclusions = ['bill', 'date', 'tax', 'no', 'tel', 'account', 'consumer', 'limited', 'highway', 'road', 'street']
+            if not any(word in clean.lower() for word in exclusions):
+                # Check if the line is NOT just a long number (like a Consumer ID)
+                if not re.search(r'\d{8,}', clean): 
+                    name = clean
+                    break
             
     return name, bill_amt, units
 if uploaded_file:
