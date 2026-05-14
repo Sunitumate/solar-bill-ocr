@@ -22,7 +22,7 @@ if uploaded_file:
     text = """
     Customer Name: GULVE TANUJA CHETAN
     Bill Amount: Rs. 560.00
-    Units Consumed: 5
+    Units Consumed: 22
     """
 
     st.subheader("Extracted Text (OCR Output)")
@@ -31,7 +31,7 @@ if uploaded_file:
     # Extract data (simple simulation)
     name = "GULVE TANUJA CHETAN"
     bill_amount = "560.00"
-    units = "5"
+    units = "22"
 
     # Display results
     st.subheader("Important Extracted Data")
