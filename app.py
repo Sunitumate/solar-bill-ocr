@@ -1,260 +1,209 @@
 import streamlit as st
-import pytesseract
-from PIL import Image
+import easyocr
+import cv2
+import numpy as np
+import pandas as pd
 import re
-from openpyxl import Workbook
+from PIL import Image
 
-# ======================================
-# PAGE CONFIG
-# ======================================
+st.set_page_config(page_title="Industry Bill OCR", layout="wide")
 
-st.set_page_config(
-    page_title="Solar Bill OCR App",
-    layout="centered"
-)
-
-st.title("⚡ Solar Bill OCR App")
-st.markdown("### AI Powered Electricity Bill Reader 🇮🇳")
-
-# ======================================
-# TESSERACT PATH
-# ======================================
-
-pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
-
-# ======================================
-# FILE UPLOAD
-# ======================================
+st.title("⚡ Industry Level Electricity Bill OCR")
+st.write("Upload any electricity bill image and extract important details automatically.")
 
 uploaded_file = st.file_uploader(
-    "Upload Electricity Bill",
+    "Upload Bill Image",
     type=["jpg", "jpeg", "png"]
 )
 
-# ======================================
-# PROCESS BILL
-# ======================================
 
-if uploaded_file:
+# -----------------------------
+# Image Preprocessing
+# -----------------------------
+def preprocess_image(image):
+    img = np.array(image)
 
-    # Open Image
-    image = Image.open(uploaded_file)
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 
-    # Show Uploaded Image
-    st.image(
-        image,
-        caption="Uploaded Bill",
-        use_container_width=True
-    )
+    gray = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    # ======================================
-    # OCR TEXT EXTRACTION
-    # ======================================
+    thresh = cv2.threshold(
+        gray,
+        0,
+        255,
+        cv2.THRESH_BINARY + cv2.THRESH_OTSU
+    )[1]
 
-    try:
+    return thresh
 
-        text = pytesseract.image_to_string(image)
 
-    except Exception as e:
+# -----------------------------
+# OCR Extraction
+# -----------------------------
+def extract_text(image):
+    reader = easyocr.Reader(['en', 'mr'], gpu=False)
 
-        st.error("OCR Failed")
-        st.write(e)
-        st.stop()
+    results = reader.readtext(image, detail=0)
 
-    # ======================================
-    # CLEAN TEXT
-    # ======================================
+    text = "\n".join(results)
 
-    clean_text = text.upper()
+    return text
 
-    # ======================================
-    # CUSTOMER NAME
-    # ======================================
 
-    customer_name = "Not Found"
+# -----------------------------
+# Smart Field Extraction
+# -----------------------------
+def extract_fields(text):
+    data = {
+        "Customer Name": "Not Found",
+        "Bill Amount": "Not Found",
+        "Units": "Not Found",
+        "Bill Number": "Not Found",
+        "Bill Date": "Not Found"
+    }
 
-    name_patterns = [
-
-        r'([A-Z]{3,}\s+[A-Z]{3,}\s+[A-Z]{3,})',
-
-        r'([A-Z]{3,}\s+[A-Z]{3,})'
-    ]
-
-    skip_words = [
-
-        "BILL OF SUPPLY",
-        "FOR THE MONTH",
-        "SOLAR PANELS",
-        "TOPCON SOLAR",
-        "GSTIN",
-        "PAYMENT",
-        "CONSUMER",
-        "PORTAL",
-        "INDIA",
-        "APPROVED",
-        "CGRF",
-        "SCAN",
-        "QR CODE",
-        "RAY SOLAR",
-        "SUB DN",
-        "DIVISION"
-
-    ]
-
-    for pattern in name_patterns:
-
-        matches = re.findall(pattern, clean_text)
-
-        for match in matches:
-
-            valid = True
-
-            for skip in skip_words:
-
-                if skip in match:
-
-                    valid = False
-                    break
-
-            if valid:
-
-                words = match.split()
-
-                if len(words) >= 2:
-
-                    customer_name = match.strip()
-                    break
-
-        if customer_name != "Not Found":
-            break
-
-    # ======================================
-    # BILL AMOUNT
-    # ======================================
-
-    bill_amount = "Not Found"
-
-    amount_matches = re.findall(
-        r'RS\.?\s?(\d+\.\d+)',
-        clean_text
-    )
-
-    valid_amounts = []
-
-    for amt in amount_matches:
-
-        try:
-
-            value = float(amt)
-
-            if 50 <= value <= 50000:
-
-                valid_amounts.append(value)
-
-        except:
-            pass
-
-    if valid_amounts:
-
-        bill_amount = min(valid_amounts)
-
-    # ======================================
-    # UNITS
-    # ======================================
-
-    units = "Not Found"
-
-    unit_patterns = [
-
-        r'UNITS?\s*[:\-]?\s*(\d+)',
-
-        r'CONSUMPTION\s*[:\-]?\s*(\d+)',
-
-        r'\b(\d{1,4})\s+UNITS\b'
-    ]
-
-    for pattern in unit_patterns:
-
-        match = re.search(pattern, clean_text)
-
-        if match:
-
-            units = match.group(1)
-            break
-
-    # ======================================
-    # BILL NUMBER
-    # ======================================
-
-    bill_number = "Not Found"
-
+    # -----------------
+    # Bill Number
+    # -----------------
     bill_patterns = [
-
-        r'BILL\s*NO\.?\s*(\d{10,15})',
-
-        r'\b\d{12}\b'
+        r'Consumer No\.?\s*[:\-]?\s*(\d+)',
+        r'Bill No\.?\s*[:\-]?\s*(\d+)',
+        r'Customer No\.?\s*[:\-]?\s*(\d+)',
+        r'(\d{10,16})'
     ]
 
     for pattern in bill_patterns:
-
-        match = re.search(pattern, clean_text)
-
+        match = re.search(pattern, text, re.IGNORECASE)
         if match:
-
-            bill_number = match.group(1) if match.lastindex else match.group()
+            data["Bill Number"] = match.group(1)
             break
 
-    # ======================================
-    # OUTPUT
-    # ======================================
+    # -----------------
+    # Amount Extraction
+    # -----------------
+    amount_patterns = [
+        r'Amount\s*Payable\s*[:\-]?\s*(\d+\.?\d*)',
+        r'Current\s*Bill\s*[:\-]?\s*(\d+\.?\d*)',
+        r'Bill\s*Amount\s*[:\-]?\s*(\d+\.?\d*)',
+        r'Rs\.?\s*(\d+\.?\d*)'
+    ]
 
-    st.subheader("📊 Important Extracted Data")
+    for pattern in amount_patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            data["Bill Amount"] = match.group(1)
+            break
 
-    st.success(f"👤 Customer Name: {customer_name}")
+    # Fallback Amount
+    if data["Bill Amount"] == "Not Found":
+        all_amounts = re.findall(r'\d+\.\d{2}', text)
+        if all_amounts:
+            data["Bill Amount"] = max(all_amounts)
 
-    st.info(f"💰 Bill Amount: ₹ {bill_amount}")
+    # -----------------
+    # Units Extraction
+    # -----------------
+    unit_patterns = [
+        r'Units\s*[:\-]?\s*(\d+)',
+        r'Consumption\s*[:\-]?\s*(\d+)',
+        r'Unit\s*Consumed\s*[:\-]?\s*(\d+)',
+        r'Current\s*Reading\s*[:\-]?\s*(\d+)'
+    ]
 
-    st.warning(f"⚡ Units: {units}")
+    for pattern in unit_patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            data["Units"] = match.group(1)
+            break
 
-    st.success(f"🧾 Bill Number: {bill_number}")
+    # -----------------
+    # Date Extraction
+    # -----------------
+    date_match = re.search(r'\d{2}[/-]\d{2}[/-]\d{4}', text)
+    if date_match:
+        data["Bill Date"] = date_match.group()
+
+    # -----------------
+    # Name Extraction
+    # -----------------
+    lines = text.split('\n')
+
+    for line in lines:
+        clean_line = line.strip()
+
+        if len(clean_line) > 5:
+            if clean_line.isupper():
+                if not any(word in clean_line.lower() for word in [
+                    'bill', 'amount', 'units', 'consumer', 'number', 'date'
+                ]):
+                    data["Customer Name"] = clean_line
+                    break
+
+    return data
+
+
+# -----------------------------
+# Main App
+# -----------------------------
+if uploaded_file:
+    image = Image.open(uploaded_file)
+
+    st.image(image, caption="Uploaded Bill", use_container_width=True)
+
+    with st.spinner("Processing Bill..."):
+        processed = preprocess_image(image)
+
+        text = extract_text(processed)
+
+        extracted_data = extract_fields(text)
 
     st.success("Bill Processed Successfully ✅")
 
-    # ======================================
-    # EXCEL EXPORT
-    # ======================================
+    col1, col2 = st.columns(2)
 
-    workbook = Workbook()
+    with col1:
+        st.info(f"👤 Customer Name: {extracted_data['Customer Name']}")
+        st.success(f"💰 Bill Amount: ₹ {extracted_data['Bill Amount']}")
+        st.warning(f"⚡ Units: {extracted_data['Units']}")
 
-    sheet = workbook.active
+    with col2:
+        st.info(f"🧾 Bill Number: {extracted_data['Bill Number']}")
+        st.success(f"📅 Bill Date: {extracted_data['Bill Date']}")
 
-    sheet.title = "Bill Data"
+    # -----------------------------
+    # Export to Excel
+    # -----------------------------
+    df = pd.DataFrame([extracted_data])
 
-    sheet["A1"] = "Customer Name"
-    sheet["B1"] = customer_name
+    excel_file = "bill_data.xlsx"
 
-    sheet["A2"] = "Bill Amount"
-    sheet["B2"] = bill_amount
+    df.to_excel(excel_file, index=False)
 
-    sheet["A3"] = "Units"
-    sheet["B3"] = units
-
-    sheet["A4"] = "Bill Number"
-    sheet["B4"] = bill_number
-
-    output_file = "solar_bill_output.xlsx"
-
-    workbook.save(output_file)
-
-    # ======================================
-    # DOWNLOAD BUTTON
-    # ======================================
-
-    with open(output_file, "rb") as file:
-
+    with open(excel_file, "rb") as file:
         st.download_button(
             label="📥 Download Excel File",
             data=file,
-            file_name="solar_bill_output.xlsx",
+            file_name="bill_data.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
+    # -----------------------------
+    # Show OCR Text
+    # -----------------------------
+    with st.expander("View OCR Extracted Text"):
+        st.text(text)
+
+
+# -----------------------------
+# Requirements
+# -----------------------------
+st.sidebar.title("Requirements.txt")
+st.sidebar.code('''
+streamlit
+opencv-python-headless
+numpy
+pandas
+easyocr
+pillow
+openpyxl
+''')
