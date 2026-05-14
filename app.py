@@ -17,26 +17,30 @@ st.markdown("### AI Powered Electricity Bill Reader")
 uploaded_file = st.file_uploader("Upload Bill Image", type=["jpg", "png", "jpeg"])
 
 def extract_data(text):
-    """Smarter logic to find data in the raw text"""
-    # 1. Try to find Amount (e.g., Rs. 560.00 or 1,200.00)
-    amt_match = re.search(r'(?:Rs|₹|Total|Amount)[:\s]*([\d,]+\.\d{2})', text, re.IGNORECASE)
-    bill_amt = amt_match.group(1) if amt_match else "Not Found"
+    # 1. Improved Amount Logic: 
+    # Looks for numbers after 'Total', 'Net', or 'Payable' even without 'Rs'
+    amt_match = re.search(r'(?:Total|Net|Payable|Amount|Rs|₹)[\s\.:]*([\d,]+\.\d{2})', text, re.IGNORECASE)
+    bill_amt = amt_match.group(1).replace(',', '') if amt_match else "Not Found"
 
-    # 2. Try to find Units (e.g., Units: 22 or 45 KWh)
-    unit_match = re.search(r'(?:Units|Consumed|KWh)[:\s]*(\d+)', text, re.IGNORECASE)
+    # 2. Improved Units Logic:
+    # Specifically looks for the word 'Units' or 'KWh' followed by a number
+    unit_match = re.search(r'(?:Units|Consumed|KWh|Usage)[\s\.:]*(\d+)', text, re.IGNORECASE)
     units = unit_match.group(1) if unit_match else "Not Found"
 
-    # 3. Simple Name extraction (grabs the first non-keyword line)
+    # 3. Improved Name Logic:
+    # Skips lines that look like phone numbers (digits only) or contain common bill keywords
     lines = text.split('\n')
     name = "Not Found"
     for line in lines:
         clean = line.strip()
-        if len(clean) > 5 and not any(k in clean.lower() for k in ['bill', 'date', 'tax', 'no']):
-            name = clean
-            break
+        # Ensure line has letters, is long enough, and isn't just a phone number
+        if len(clean) > 8 and any(c.isalpha() for c in clean):
+            bad_words = ['bill', 'date', 'tax', 'no', 'tel', 'phone', 'account', 'consumer']
+            if not any(word in clean.lower() for word in bad_words):
+                name = clean
+                break
             
     return name, bill_amt, units
-
 if uploaded_file:
     image = Image.open(uploaded_file)
     st.image(image, caption="Uploaded Bill")
