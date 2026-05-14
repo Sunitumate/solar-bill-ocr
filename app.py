@@ -1,68 +1,59 @@
 import streamlit as st
+import pytesseract
 from PIL import Image
+import pandas as pd
 import re
-from openpyxl import Workbook
-from io import BytesIO
 
-st.set_page_config(page_title="Solar Bill OCR App", layout="centered")
+# Title of the app
+st.title("⚡ Simple Electricity Bill Reader")
 
-st.title("⚡ Solar Bill OCR App")
-st.markdown("### AI Powered Electricity Bill Reader")
+# Uploading the file
+uploaded_file = st.file_uploader("Choose a bill image...", type=["jpg", "png", "jpeg"])
 
-# Upload image
-uploaded_file = st.file_uploader("Upload Bill Image", type=["jpg", "png", "jpeg"])
+def extract_info(text):
+    data = {"Customer Name": "Not Found", "Bill Amount": "Not Found", "Units": "Not Found"}
+    
+    # 1. Simple search for Amount
+    amt_match = re.search(r'(?:Rs|Amount|Total)[:\s]*(\d+\.?\d*)', text, re.IGNORECASE)
+    if amt_match:
+        data["Bill Amount"] = amt_match.group(1)
+        
+    # 2. Simple search for Units
+    unit_match = re.search(r'(?:Units|Consumed)[:\s]*(\d+)', text, re.IGNORECASE)
+    if unit_match:
+        data["Units"] = unit_match.group(1)
+        
+    # 3. Simple search for Name (First long line with letters)
+    lines = text.split('\n')
+    for line in lines:
+        clean = line.strip()
+        if len(clean) > 8 and any(c.isalpha() for c in clean):
+            if not any(word in clean.lower() for word in ['bill', 'date', 'account', 'consumer']):
+                data["Customer Name"] = clean
+                break
+                
+    return data
 
 if uploaded_file:
-
-    # Show image
-    image = Image.open(uploaded_file)
-    st.image(image, caption="Uploaded Bill")
-
-    # ❗ SAFE DEMO OCR OUTPUT (NO DEPENDENCY ERROR)
-    text = """
-    Customer Name: GULVE TANUJA CHETAN
-    Bill Amount: Rs. 560.00
-    Units Consumed: 22
-    """
-
-    st.subheader("Extracted Text (OCR Output)")
-    st.write(text)
-
-    # Extract data (simple simulation)
-    name = "GULVE TANUJA CHETAN"
-    bill_amount = "560.00"
-    units = "22"
-
-    # Display results
-    st.subheader("Important Extracted Data")
-    st.success(f"👤 Customer Name: {name}")
-    st.info(f"💰 Bill Amount: {bill_amount}")
-    st.warning(f"⚡ Units: {units}")
-
-    st.success("Bill Processed Successfully ✅")
-
-    # Create Excel file
-    workbook = Workbook()
-    sheet = workbook.active
-
-    sheet["A1"] = "Customer Name"
-    sheet["B1"] = name
-
-    sheet["A2"] = "Bill Amount"
-    sheet["B2"] = bill_amount
-
-    sheet["A3"] = "Units"
-    sheet["B3"] = units
-
-    # Save to memory
-    output = BytesIO()
-    workbook.save(output)
-    output.seek(0)
-
-    # Download button
-    st.download_button(
-        label="📥 Download Excel File",
-        data=output,
-        file_name="solar_bill_output.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+    # Show the image
+    img = Image.open(uploaded_file)
+    st.image(img, caption="Uploaded Bill", use_container_width=True)
+    
+    with st.spinner("Reading data..."):
+        # The OCR Part
+        extracted_text = pytesseract.image_to_string(img)
+        
+        # Get the fields
+        info = extract_info(extracted_text)
+        
+    # Display Results
+    st.success("Done!")
+    st.subheader("Extracted Results:")
+    st.write(f"👤 **Name:** {info['Customer Name']}")
+    st.write(f"💰 **Amount:** ₹{info['Bill Amount']}")
+    st.write(f"⚡ **Units:** {info['Units']}")
+    
+    # Simple Download Button
+    df = pd.DataFrame([info])
+    csv = df.to_csv(index=False).encode('utf-8')
+    st.download_button("📥 Download Result as CSV", csv, "bill_result.csv", "text/csv")
